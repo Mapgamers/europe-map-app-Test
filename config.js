@@ -67,7 +67,7 @@ const LAYERS = [
   color: "#8a6d3b",
   visible: true,
   popupFields: [],
-  icon: { url: "icons/bastion.svg", width: 15, height: 15 },
+  icon: { url: "icons/Bastion.svg", width: 15, height: 15 },
   labelField: "name"
 },
 {
