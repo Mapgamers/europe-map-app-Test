@@ -62,7 +62,7 @@ const LAYERS = [
 {
   id: "bastions",
   label: "Bastions",
-  file: "data/bastions.geojson",
+  file: "data/Bastions.geojson",
   type: "point",
   color: "#8a6d3b",
   visible: true,
