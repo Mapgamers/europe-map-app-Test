@@ -4,25 +4,31 @@
 const map = L.map("map", {
   zoomControl: false,
   minZoom: 3,
-  maxZoom: 18
+  maxZoom: 18,
+  renderer: L.canvas()
 }).setView(MAP_CENTER, MAP_ZOOM);
+
 L.control.zoom({ position: "bottomright" }).addTo(map);
+
 L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
   attribution:
     '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
   subdomains: "abcd",
   maxZoom: 19
 }).addTo(map);
+
 L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Hillshade/MapServer/tile/{z}/{y}/{x}", {
   attribution: "Hillshade: USGS, Esri",
   maxZoom: 13,
   opacity: 1
 }).addTo(map);
+
 L.tileLayer("tiles/{z}/{x}/{y}.png", {
   minZoom: 2,
   maxZoom: 9,
   opacity: 0.6
 }).addTo(map);
+
 // ---------------------------------------------------------------
 // FEATURE INFO PANEL
 // ---------------------------------------------------------------
@@ -67,19 +73,19 @@ function pointToLayer(color, iconCfg) {
     const customIcon = L.icon({
       iconUrl: iconCfg.url,
       iconSize: [w, h],
-      iconAnchor: [w / 2, h] // bottom-center, like a pin
+      iconAnchor: [w / 2, h]
     });
     return (feature, latlng) => L.marker(latlng, { icon: customIcon });
   }
 
   return (feature, latlng) =>
-  L.circleMarker(latlng, {
-    radius: 3,
-    fillColor: color,
-    color: "#1a1a1a",
-    weight: 1,
-    fillOpacity: 0.85
-  });
+    L.circleMarker(latlng, {
+      radius: 3,
+      fillColor: color,
+      color: "#1a1a1a",
+      weight: 1,
+      fillOpacity: 0.85
+    });
 }
 
 function styleFor(color, type, dashed) {
@@ -91,7 +97,6 @@ function styleFor(color, type, dashed) {
       dashArray: dashed ? "6, 6" : null
     };
   }
-  // polygon
   return {
     color: color,
     weight: 1.5,
@@ -101,10 +106,121 @@ function styleFor(color, type, dashed) {
 }
 
 // ---------------------------------------------------------------
+// LABEL VISIBILITY (single global handler, no load-time flash)
+// ---------------------------------------------------------------
+const labeledMarkers = []; // { lyr, minZoom }
+
+function updateAllLabels() {
+  const z = map.getZoom();
+  labeledMarkers.forEach(({ lyr, minZoom }) => {
+    if (z >= minZoom) {
+      lyr.openTooltip();
+    } else {
+      lyr.closeTooltip();
+    }
+  });
+}
+
+// ---------------------------------------------------------------
+// VIEWPORT-BASED RENDERING
+// ---------------------------------------------------------------
+// Instead of adding every feature to the map at once, each feature
+// is built as its own tiny layer and only actually attached to the
+// map when it's within (or near) the current view. Off-screen
+// features get detached until you scroll back to them. This keeps
+// draw/interaction performance high even with large datasets.
+function debounce(fn, delay) {
+  let t;
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), delay);
+  };
+}
+
+const viewportLayers = []; // entries needing refresh on move/zoom
+
+function refreshViewport(entry) {
+  if (!entry.viewportItems) return; // clustered layers manage themselves
+  const viewBounds = map.getBounds().pad(0.25);
+
+  entry.viewportItems.forEach((item) => {
+    const shouldShow = viewBounds.intersects(item.bounds);
+    if (shouldShow && !item.onMap) {
+      entry.container.addLayer(item.layer);
+      item.onMap = true;
+    } else if (!shouldShow && item.onMap) {
+      entry.container.removeLayer(item.layer);
+      item.onMap = false;
+    }
+  });
+}
+
+const refreshAllViewports = debounce(() => {
+  viewportLayers.forEach(refreshViewport);
+}, 120);
+
+map.on("moveend zoomend", refreshAllViewports);
+
+// ---------------------------------------------------------------
 // LOAD LAYERS
 // ---------------------------------------------------------------
 const layerListEl = document.getElementById("layer-list");
-const activeLayers = {}; // id -> Leaflet layer
+const activeLayers = {}; // id -> { container, viewportItems }
+
+function makeLayerOptions(cfg) {
+  return {
+    renderer: L.canvas(),
+    pointToLayer: cfg.type === "point" ? pointToLayer(cfg.color, cfg.icon) : undefined,
+    style: cfg.type !== "point" ? styleFor(cfg.color, cfg.type, cfg.dashed) : undefined,
+    onEachFeature: (feature, lyr) => {
+      lyr.on("click", () => showFeatureInfo(feature.properties, cfg.popupFields));
+
+      if (cfg.labelField && feature.properties && feature.properties[cfg.labelField]) {
+        lyr.bindTooltip(String(feature.properties[cfg.labelField]), {
+          permanent: true,
+          direction: "right",
+          offset: [8, 0],
+          className: "map-label"
+        });
+        labeledMarkers.push({ lyr, minZoom: cfg.minLabelZoom || 0 });
+      }
+    }
+  };
+}
+
+function buildLeafletLayer(cfg, geojson) {
+  const options = makeLayerOptions(cfg);
+
+  // Clustering handles its own performance/visibility — skip viewport logic.
+  if (cfg.type === "point" && cfg.cluster && window.L.markerClusterGroup) {
+    const clusterGroup = L.markerClusterGroup({
+      disableClusteringAtZoom: cfg.clusterMaxZoom || 10,
+      spiderfyOnMaxZoom: false,
+      showCoverageOnHover: false
+    });
+    const geoLayer = L.geoJSON(geojson, options);
+    clusterGroup.addLayer(geoLayer);
+    return { container: clusterGroup, viewportItems: null };
+  }
+
+  // Build each feature as its own small layer, don't attach yet.
+  const container = L.layerGroup();
+  const viewportItems = [];
+
+  (geojson.features || []).forEach((feature) => {
+    const single = L.geoJSON(feature, options);
+    let bounds;
+    try {
+      bounds = single.getBounds();
+      if (!bounds.isValid()) return;
+    } catch (e) {
+      return;
+    }
+    viewportItems.push({ layer: single, bounds, onMap: false });
+  });
+
+  return { container, viewportItems };
+}
 
 async function loadLayer(cfg) {
   try {
@@ -112,42 +228,15 @@ async function loadLayer(cfg) {
     if (!res.ok) throw new Error(`${cfg.file} not found (${res.status})`);
     const geojson = await res.json();
 
-    const layerOptions = {
-  onEachFeature: (feature, lyr) => {
-    lyr.on("click", () => showFeatureInfo(feature.properties, cfg.popupFields));
+    const entry = buildLeafletLayer(cfg, geojson);
+    activeLayers[cfg.id] = entry;
 
-    if (cfg.labelField && feature.properties && feature.properties[cfg.labelField]) {
-  lyr.bindTooltip(String(feature.properties[cfg.labelField]), {
-    permanent: true,
-    direction: "right",
-    offset: [8, 0],
-    className: "map-label"
-  });
+    if (entry.viewportItems) viewportLayers.push(entry);
 
-  const minZ = cfg.minLabelZoom || 0;
-  const updateLabelVisibility = () => {
-    if (map.getZoom() >= minZ) {
-      lyr.openTooltip();
-    } else {
-      lyr.closeTooltip();
+    if (cfg.visible) {
+      entry.container.addTo(map);
+      refreshViewport(entry);
     }
-  };
-  map.on("zoomend", updateLabelVisibility);
-  updateLabelVisibility();
-}
-  }
-};
-
-    if (cfg.type === "point") {
-      layerOptions.pointToLayer = pointToLayer(cfg.color, cfg.icon);
-    } else {
-      layerOptions.style = styleFor(cfg.color, cfg.type, cfg.dashed);
-    }
-
-    const lyr = L.geoJSON(geojson, layerOptions);
-    activeLayers[cfg.id] = lyr;
-
-    if (cfg.visible) lyr.addTo(map);
 
     buildLayerRow(cfg, true);
   } catch (err) {
@@ -177,18 +266,21 @@ function buildLayerRow(cfg, loaded) {
 
   if (loaded) {
     row.querySelector("input").addEventListener("change", (e) => {
-      const lyr = activeLayers[cfg.id];
+      const entry = activeLayers[cfg.id];
       if (e.target.checked) {
-        lyr.addTo(map);
+        entry.container.addTo(map);
+        refreshViewport(entry);
+        updateAllLabels();
       } else {
-        map.removeLayer(lyr);
+        map.removeLayer(entry.container);
       }
     });
   }
 }
 
-// Kick off loading
-LAYERS.forEach(loadLayer);
+Promise.all(LAYERS.map(loadLayer)).then(() => {
+  updateAllLabels();
+});
 
 // ---------------------------------------------------------------
 // MOBILE PANEL TOGGLE

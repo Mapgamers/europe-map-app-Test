@@ -57,7 +57,9 @@ const LAYERS = [
   visible: true,
   popupFields: [],
   labelField: "city",
-  minLabelZoom: 6
+  minLabelZoom: 6,
+  cluster: true,
+  clusterMaxZoom: 6
 },
 {
   id: "bastions",
@@ -68,7 +70,9 @@ const LAYERS = [
   visible: true,
   popupFields: [],
   icon: { url: "icons/Bastion.svg", width: 15, height: 15 },
-  labelField: "name"
+  labelField: "name",
+  cluster: true,
+  clusterMaxZoom: 6
 },
 {
   id: "cities",
@@ -79,7 +83,9 @@ const LAYERS = [
   visible: true,
   popupFields: [],
   labelField: "names",
-  minLabelZoom: 6
+  minLabelZoom: 6,
+  cluster: true,
+  clusterMaxZoom: 6
 },
 {
   id: "Bicoque",
@@ -91,7 +97,9 @@ const LAYERS = [
   popupFields: [],
   icon: { url: "icons/Basic_Fort.svg", width: 15, height: 15 },
   labelField: "names",
-  minLabelZoom: 6
+  minLabelZoom: 6,
+  cluster: true,
+  clusterMaxZoom: 6
 },
 {
   id: "Forts",
@@ -103,7 +111,9 @@ const LAYERS = [
   popupFields: [],
   icon: { url: "icons/Castle.svg", width: 15, height: 15 },
   labelField: "names",
-  minLabelZoom: 6
+  minLabelZoom: 6,
+  cluster: true,
+  clusterMaxZoom: 6
 },
 {
   id: "Liege",
