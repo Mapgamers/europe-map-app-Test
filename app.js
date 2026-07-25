@@ -9,6 +9,15 @@ const map = L.map("map", {
 }).setView(MAP_CENTER, MAP_ZOOM);
 
 L.control.zoom({ position: "bottomright" }).addTo(map);
+L.control.ruler({
+  position: "bottomright",
+  lengthUnit: {
+    display: "km",
+    decimal: 2,
+    factor: null,
+    label: "Distance:"
+  }
+}).addTo(map);
 
 L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
   attribution:
