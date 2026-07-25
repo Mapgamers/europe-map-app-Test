@@ -128,6 +128,36 @@ function updateAllLabels() {
       lyr.closeTooltip();
     }
   });
+  requestAnimationFrame(resolveLabelCollisions);
+}
+
+function resolveLabelCollisions() {
+  const acceptedRects = [];
+
+  labeledMarkers.forEach(({ lyr }) => {
+    const tooltip = lyr.getTooltip && lyr.getTooltip();
+    if (!tooltip || !tooltip.isOpen()) return;
+
+    const el = tooltip.getElement();
+    if (!el) return;
+
+    el.style.visibility = "visible";
+
+    const rect = el.getBoundingClientRect();
+    const overlaps = acceptedRects.some(
+      (r) =>
+        rect.left < r.right &&
+        rect.right > r.left &&
+        rect.top < r.bottom &&
+        rect.bottom > r.top
+    );
+
+    if (overlaps) {
+      el.style.visibility = "hidden";
+    } else {
+      acceptedRects.push(rect);
+    }
+  });
 }
 
 // ---------------------------------------------------------------
@@ -166,6 +196,7 @@ function refreshViewport(entry) {
 
 const refreshAllViewports = debounce(() => {
   viewportLayers.forEach(refreshViewport);
+  updateAllLabels();
 }, 120);
 
 map.on("moveend zoomend", refreshAllViewports);
