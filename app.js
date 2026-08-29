@@ -133,8 +133,9 @@ function updateAllLabels() {
 
 function resolveLabelCollisions() {
   const acceptedRects = [];
+  const sortedMarkers = [...labeledMarkers].sort((a, b) => b.priority - a.priority);
 
-  labeledMarkers.forEach(({ lyr }) => {
+  sortedMarkers.forEach(({ lyr }) => {
     const tooltip = lyr.getTooltip && lyr.getTooltip();
     if (!tooltip || !tooltip.isOpen()) return;
 
@@ -215,15 +216,18 @@ function makeLayerOptions(cfg) {
     onEachFeature: (feature, lyr) => {
       lyr.on("click", () => showFeatureInfo(feature.properties, cfg.popupFields));
 
-      if (cfg.labelField && feature.properties && feature.properties[cfg.labelField]) {
-        lyr.bindTooltip(String(feature.properties[cfg.labelField]), {
-          permanent: true,
-          direction: "right",
-          offset: [8, 0],
-          className: "map-label"
-        });
-        labeledMarkers.push({ lyr, minZoom: cfg.minLabelZoom || 0 });
-      }
+if (cfg.labelField && feature.properties && feature.properties[cfg.labelField]) {
+  lyr.bindTooltip(String(feature.properties[cfg.labelField]), {
+    permanent: true,
+    direction: "right",
+    offset: [8, 0],
+    className: "map-label"
+  });
+  const priority = cfg.priorityField
+    ? Number(feature.properties[cfg.priorityField]) || 0
+    : 0;
+  labeledMarkers.push({ lyr, minZoom: cfg.minLabelZoom || 0, priority });
+}
     }
   };
 }

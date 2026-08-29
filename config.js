@@ -59,7 +59,8 @@ const LAYERS = [
   labelField: "city",
   minLabelZoom: 6,
   cluster: true,
-  clusterMaxZoom: 6
+  clusterMaxZoom: 6,
+  priorityField: "citypop_le"
 },
 {
   id: "bastions",
