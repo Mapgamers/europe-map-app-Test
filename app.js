@@ -9,6 +9,7 @@ const map = L.map("map", {
 }).setView(MAP_CENTER, MAP_ZOOM);
 
 L.control.zoom({ position: "bottomright" }).addTo(map);
+
 L.control.ruler({
   position: "bottomright",
   lengthUnit: {
@@ -38,6 +39,49 @@ L.tileLayer("tiles/{z}/{x}/{y}.png", {
 }).addTo(map);
 
 // ---------------------------------------------------------------
+// SUPABASE CONNECTION (fortress ownership data)
+// ---------------------------------------------------------------
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const ownershipCache = {}; // tableName -> { featureId: { owner, color } }
+
+async function loadOwnership(cfg) {
+  const table = cfg.ownershipTable;
+  if (ownershipCache[table]) return; // already loaded
+
+  const { data, error } = await supabaseClient.from(table).select("*");
+  if (error) {
+    console.error(`Failed to load ownership for ${table}:`, JSON.stringify(error));
+    ownershipCache[table] = {};
+    return;
+  }
+  const idCol = cfg.ownershipIdColumn;
+  const map = {};
+  data.forEach((row) => {
+    map[row[idCol]] = { owner: row.owner, color: row.color };
+  });
+  ownershipCache[table] = map;
+}
+
+async function saveOwnership(cfg, featureId, faction) {
+  const table = cfg.ownershipTable;
+  const idCol = cfg.ownershipIdColumn;
+
+  const { error } = await supabaseClient
+    .from(table)
+    .upsert(
+      { [idCol]: featureId, owner: faction.name, color: faction.color },
+      { onConflict: idCol }
+    );
+  if (error) {
+    console.error(`Failed to save ownership for ${table}:`, JSON.stringify(error));
+    return false;
+  }
+  if (!ownershipCache[table]) ownershipCache[table] = {};
+  ownershipCache[table][featureId] = { owner: faction.name, color: faction.color };
+  return true;
+}
+
+// ---------------------------------------------------------------
 // FEATURE INFO PANEL
 // ---------------------------------------------------------------
 const infoEl = document.getElementById("feature-info");
@@ -52,7 +96,7 @@ function showFeatureInfo(props, popupFields) {
   }
 
   const rows = keys
-    .filter((k) => props[k] !== undefined)
+    .filter((k) => props[k] !== undefined && !String(k).startsWith("_"))
     .map(
       (k) =>
         `<div class="info-row"><span class="info-key">${escapeHtml(
@@ -72,18 +116,79 @@ function escapeHtml(str) {
 }
 
 // ---------------------------------------------------------------
+// BASTION OWNERSHIP EDITOR (appends to the feature-info panel)
+// ---------------------------------------------------------------
+function renderOwnershipEditor(feature, lyr, cfg) {
+  const featureId = feature.properties.id;
+  const currentOwnerName = feature.properties._owner || "None";
+
+  const optionsHtml = FACTIONS.map(
+    (f) =>
+      `<option value="${escapeHtml(f.name)}" ${
+        f.name === currentOwnerName ? "selected" : ""
+      }>${escapeHtml(f.name)}</option>`
+  ).join("");
+
+  const editorHtml = `
+    <div class="bastion-editor">
+      <label class="bastion-editor-label">Assign owner</label>
+      <select id="bastion-owner-select">${optionsHtml}</select>
+      <button id="bastion-save-btn">Save</button>
+      <span id="bastion-save-status"></span>
+    </div>
+  `;
+
+  infoEl.insertAdjacentHTML("beforeend", editorHtml);
+
+  document.getElementById("bastion-save-btn").addEventListener("click", async () => {
+    const select = document.getElementById("bastion-owner-select");
+    const chosenName = select.value;
+    const faction = FACTIONS.find((f) => f.name === chosenName);
+    const statusEl = document.getElementById("bastion-save-status");
+
+    statusEl.textContent = "Saving...";
+    const success = await saveOwnership(cfg, featureId, faction);
+
+    if (success) {
+      feature.properties._owner = faction.name;
+      feature.properties._ownerColor = faction.color;
+      lyr.setIcon(buildBastionIcon(feature, lyr._iconCfg));
+      statusEl.textContent = "Saved.";
+    } else {
+      statusEl.textContent = "Failed to save.";
+    }
+  });
+}
+
+// Keeps track of which layer config each bastion feature came from,
+// so we can rebuild its icon later with the right width/height.
+const bastionIconCfgById = {};
+function currentIconCfg(feature) {
+  return bastionIconCfgById[feature.properties.id];
+}
+
+// ---------------------------------------------------------------
 // LAYER STYLING HELPERS
 // ---------------------------------------------------------------
-function pointToLayer(color, iconCfg) {
-  if (iconCfg && iconCfg.url) {
-    const w = iconCfg.width || 24;
-    const h = iconCfg.height || 24;
+function buildBastionIcon(feature, iconCfg) {
+  const w = iconCfg.width || 24;
+  const h = iconCfg.height || 24;
+  const tintColor = feature.properties._ownerColor || iconCfg.defaultColor || "#e8a33d";
+  const outline = "#1a1a1a";
+  const badgeSize = Math.max(w, h) * 1.25;
 
-    return (feature, latlng) => {
-      const tintColor =
-        (feature.properties && feature.properties._ownerColor) || color;
-
-      const html = `<div class="svg-icon" style="
+  const html = `
+    <div style="
+      width:${badgeSize}px;
+      height:${badgeSize}px;
+      border-radius:50%;
+      background:${outline};
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+    ">
+      <div style="
         width:${w}px;
         height:${h}px;
         background-color:${tintColor};
@@ -95,16 +200,26 @@ function pointToLayer(color, iconCfg) {
         mask-repeat:no-repeat;
         -webkit-mask-position:center;
         mask-position:center;
-      "></div>`;
+      "></div>
+    </div>
+  `;
 
-      const customIcon = L.divIcon({
-        html: html,
-        className: "",
-        iconSize: [w, h],
-        iconAnchor: [w / 2, h]
-      });
+  return L.divIcon({
+    html: html,
+    className: "",
+    iconSize: [badgeSize, badgeSize],
+    iconAnchor: [badgeSize / 2, badgeSize]
+  });
+}
 
-      return L.marker(latlng, { icon: customIcon });
+function pointToLayer(color, iconCfg) {
+  if (iconCfg && iconCfg.url) {
+    return (feature, latlng) => {
+      const cfgWithDefault = { ...iconCfg, defaultColor: color };
+      const icon = buildBastionIcon(feature, cfgWithDefault);
+      const marker = L.marker(latlng, { icon });
+      marker._iconCfg = cfgWithDefault; // stashed here for later re-coloring on save
+      return marker;
     };
   }
 
@@ -136,9 +251,9 @@ function styleFor(color, type, dashed) {
 }
 
 // ---------------------------------------------------------------
-// LABEL VISIBILITY (single global handler, no load-time flash)
+// LABEL VISIBILITY + COLLISION AVOIDANCE
 // ---------------------------------------------------------------
-const labeledMarkers = []; // { lyr, minZoom }
+const labeledMarkers = []; // { lyr, minZoom, priority }
 
 function updateAllLabels() {
   const z = map.getZoom();
@@ -185,11 +300,6 @@ function resolveLabelCollisions() {
 // ---------------------------------------------------------------
 // VIEWPORT-BASED RENDERING
 // ---------------------------------------------------------------
-// Instead of adding every feature to the map at once, each feature
-// is built as its own tiny layer and only actually attached to the
-// map when it's within (or near) the current view. Off-screen
-// features get detached until you scroll back to them. This keeps
-// draw/interaction performance high even with large datasets.
 function debounce(fn, delay) {
   let t;
   return (...args) => {
@@ -198,10 +308,10 @@ function debounce(fn, delay) {
   };
 }
 
-const viewportLayers = []; // entries needing refresh on move/zoom
+const viewportLayers = [];
 
 function refreshViewport(entry) {
-  if (!entry.viewportItems) return; // clustered layers manage themselves
+  if (!entry.viewportItems) return;
   const viewBounds = map.getBounds().pad(0.25);
 
   entry.viewportItems.forEach((item) => {
@@ -227,7 +337,7 @@ map.on("moveend zoomend", refreshAllViewports);
 // LOAD LAYERS
 // ---------------------------------------------------------------
 const layerListEl = document.getElementById("layer-list");
-const activeLayers = {}; // id -> { container, viewportItems }
+const activeLayers = {};
 
 function makeLayerOptions(cfg) {
   return {
@@ -235,20 +345,25 @@ function makeLayerOptions(cfg) {
     pointToLayer: cfg.type === "point" ? pointToLayer(cfg.color, cfg.icon) : undefined,
     style: cfg.type !== "point" ? styleFor(cfg.color, cfg.type, cfg.dashed) : undefined,
     onEachFeature: (feature, lyr) => {
-      lyr.on("click", () => showFeatureInfo(feature.properties, cfg.popupFields));
+	lyr.on("click", () => {
+  	showFeatureInfo(feature.properties, cfg.popupFields);
+  	if (cfg.ownershipTable) {
+    	renderOwnershipEditor(feature, lyr, cfg);
+  	}
+	});
 
-if (cfg.labelField && feature.properties && feature.properties[cfg.labelField]) {
-  lyr.bindTooltip(String(feature.properties[cfg.labelField]), {
-    permanent: true,
-    direction: "right",
-    offset: [8, 0],
-    className: "map-label"
-  });
-  const priority = cfg.priorityField
-    ? Number(feature.properties[cfg.priorityField]) || 0
-    : 0;
-  labeledMarkers.push({ lyr, minZoom: cfg.minLabelZoom || 0, priority });
-}
+      if (cfg.labelField && feature.properties && feature.properties[cfg.labelField]) {
+        lyr.bindTooltip(String(feature.properties[cfg.labelField]), {
+          permanent: true,
+          direction: "right",
+          offset: [8, 0],
+          className: "map-label"
+        });
+        const priority = cfg.priorityField
+          ? Number(feature.properties[cfg.priorityField]) || 0
+          : 0;
+        labeledMarkers.push({ lyr, minZoom: cfg.minLabelZoom || 0, priority });
+      }
     }
   };
 }
@@ -256,7 +371,6 @@ if (cfg.labelField && feature.properties && feature.properties[cfg.labelField]) 
 function buildLeafletLayer(cfg, geojson) {
   const options = makeLayerOptions(cfg);
 
-  // Clustering handles its own performance/visibility — skip viewport logic.
   if (cfg.type === "point" && cfg.cluster && window.L.markerClusterGroup) {
     const clusterGroup = L.markerClusterGroup({
       disableClusteringAtZoom: cfg.clusterMaxZoom || 10,
@@ -268,7 +382,6 @@ function buildLeafletLayer(cfg, geojson) {
     return { container: clusterGroup, viewportItems: null };
   }
 
-  // Build each feature as its own small layer, don't attach yet.
   const container = L.layerGroup();
   const viewportItems = [];
 
@@ -287,33 +400,17 @@ function buildLeafletLayer(cfg, geojson) {
   return { container, viewportItems };
 }
 
-// ---------------------------------------------------------------
-// SUPABASE CONNECTION (fortress ownership data)
-// ---------------------------------------------------------------
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-let bastionOwnership = {};
-
-async function loadBastionOwnership() {
-  const { data, error } = await supabaseClient.from("Bastions").select("*");
-  if (error) {
-    console.error("Failed to load bastion ownership:", error);
-    return;
-  }
-  data.forEach((row) => {
-    bastionOwnership[row.Bastion_id] = { owner: row.owner, color: row.color };
-  });
-}
-
 async function loadLayer(cfg) {
   try {
     const res = await fetch(cfg.file);
     if (!res.ok) throw new Error(`${cfg.file} not found (${res.status})`);
     const geojson = await res.json();
 
-if (cfg.id === "bastions") {
-  await loadBastionOwnership();
+    if (cfg.ownershipTable) {
+  await loadOwnership(cfg);
+  const table = ownershipCache[cfg.ownershipTable] || {};
   geojson.features.forEach((feature) => {
-    const ownership = bastionOwnership[feature.properties.id];
+    const ownership = table[feature.properties.id];
     if (ownership) {
       feature.properties._ownerColor = ownership.color;
       feature.properties._owner = ownership.owner;
