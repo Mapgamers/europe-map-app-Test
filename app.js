@@ -44,6 +44,44 @@ L.tileLayer("tiles/{z}/{x}/{y}.png", {
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const ownershipCache = {}; // tableName -> { featureId: { owner, color } }
 
+let isAdmin = false;
+
+async function checkSession() {
+  const { data } = await supabaseClient.auth.getSession();
+  isAdmin = !!data.session;
+  updateAuthUI();
+}
+
+function updateAuthUI() {
+  document.getElementById("auth-logged-out").style.display = isAdmin ? "none" : "block";
+  document.getElementById("auth-logged-in").style.display = isAdmin ? "block" : "none";
+}
+
+document.getElementById("auth-login-btn").addEventListener("click", async () => {
+  const email = document.getElementById("auth-email").value;
+  const password = document.getElementById("auth-password").value;
+  const statusEl = document.getElementById("auth-status");
+
+  statusEl.textContent = "Logging in...";
+  const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+
+  if (error) {
+    statusEl.textContent = "Login failed.";
+  } else {
+    statusEl.textContent = "";
+    isAdmin = true;
+    updateAuthUI();
+  }
+});
+
+document.getElementById("auth-logout-btn").addEventListener("click", async () => {
+  await supabaseClient.auth.signOut();
+  isAdmin = false;
+  updateAuthUI();
+});
+
+checkSession();
+
 async function loadOwnership(cfg) {
   const table = cfg.ownershipTable;
   if (ownershipCache[table]) return; // already loaded
@@ -347,7 +385,7 @@ function makeLayerOptions(cfg) {
     onEachFeature: (feature, lyr) => {
 	lyr.on("click", () => {
   	showFeatureInfo(feature.properties, cfg.popupFields);
-  	if (cfg.ownershipTable) {
+  	if (cfg.ownershipTable && isAdmin) {
     	renderOwnershipEditor(feature, lyr, cfg);
   	}
 	});

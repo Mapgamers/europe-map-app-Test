@@ -26,6 +26,18 @@
     <div id="layer-list" aria-label="Map layers"></div>
 
     <div id="panel-footer">
+      <div id="auth-box">
+        <div id="auth-logged-out">
+          <input type="email" id="auth-email" placeholder="Email" />
+          <input type="password" id="auth-password" placeholder="Password" />
+          <button id="auth-login-btn">Log in</button>
+          <span id="auth-status"></span>
+        </div>
+        <div id="auth-logged-in" style="display:none;">
+          <span>Logged in as admin</span>
+          <button id="auth-logout-btn">Log out</button>
+        </div>
+      </div>
       <div id="feature-info" class="empty">Click a feature on the map for details.</div>
     </div>
   </aside>

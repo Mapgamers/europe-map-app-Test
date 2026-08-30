@@ -227,6 +227,49 @@ html, body {
   color: var(--text-dim);
 }
 
+#auth-box {
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#auth-box input {
+  background: var(--ink-soft);
+  color: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+}
+
+#auth-box button {
+  background: var(--amber);
+  color: var(--ink);
+  border: none;
+  border-radius: 4px;
+  padding: 8px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+#auth-status {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+#auth-logged-in {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
 
 /* ---------------- Mobile toggle ---------------- */
 
