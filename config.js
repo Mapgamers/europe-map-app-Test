@@ -19,6 +19,9 @@
 //               Omit "icon" entirely to use a plain colored dot.
 // ---------------------------------------------------------------
 
+const SUPABASE_URL = "https://agcybjjgaytxsibghniw.supabase.co";
+const SUPABASE_KEY = "sb_publishable_MuPHkvO4GOGR575Udn1h8A_emQCy4Qc";
+
 const LAYERS = [
     {
     id: "Main_Roads",

@@ -19,10 +19,9 @@ L.control.ruler({
   }
 }).addTo(map);
 
-L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-  attribution:
-    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-  subdomains: "abcd",
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  subdomains: "abc",
   maxZoom: 19
 }).addTo(map);
 
@@ -79,12 +78,34 @@ function pointToLayer(color, iconCfg) {
   if (iconCfg && iconCfg.url) {
     const w = iconCfg.width || 24;
     const h = iconCfg.height || 24;
-    const customIcon = L.icon({
-      iconUrl: iconCfg.url,
-      iconSize: [w, h],
-      iconAnchor: [w / 2, h]
-    });
-    return (feature, latlng) => L.marker(latlng, { icon: customIcon });
+
+    return (feature, latlng) => {
+      const tintColor =
+        (feature.properties && feature.properties._ownerColor) || color;
+
+      const html = `<div class="svg-icon" style="
+        width:${w}px;
+        height:${h}px;
+        background-color:${tintColor};
+        -webkit-mask-image:url('${iconCfg.url}');
+        mask-image:url('${iconCfg.url}');
+        -webkit-mask-size:contain;
+        mask-size:contain;
+        -webkit-mask-repeat:no-repeat;
+        mask-repeat:no-repeat;
+        -webkit-mask-position:center;
+        mask-position:center;
+      "></div>`;
+
+      const customIcon = L.divIcon({
+        html: html,
+        className: "",
+        iconSize: [w, h],
+        iconAnchor: [w / 2, h]
+      });
+
+      return L.marker(latlng, { icon: customIcon });
+    };
   }
 
   return (feature, latlng) =>
@@ -266,11 +287,39 @@ function buildLeafletLayer(cfg, geojson) {
   return { container, viewportItems };
 }
 
+// ---------------------------------------------------------------
+// SUPABASE CONNECTION (fortress ownership data)
+// ---------------------------------------------------------------
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let bastionOwnership = {};
+
+async function loadBastionOwnership() {
+  const { data, error } = await supabaseClient.from("Bastions").select("*");
+  if (error) {
+    console.error("Failed to load bastion ownership:", error);
+    return;
+  }
+  data.forEach((row) => {
+    bastionOwnership[row.Bastion_id] = { owner: row.owner, color: row.color };
+  });
+}
+
 async function loadLayer(cfg) {
   try {
     const res = await fetch(cfg.file);
     if (!res.ok) throw new Error(`${cfg.file} not found (${res.status})`);
     const geojson = await res.json();
+
+if (cfg.id === "bastions") {
+  await loadBastionOwnership();
+  geojson.features.forEach((feature) => {
+    const ownership = bastionOwnership[feature.properties.id];
+    if (ownership) {
+      feature.properties._ownerColor = ownership.color;
+      feature.properties._owner = ownership.owner;
+    }
+  });
+}
 
     const entry = buildLeafletLayer(cfg, geojson);
     activeLayers[cfg.id] = entry;
