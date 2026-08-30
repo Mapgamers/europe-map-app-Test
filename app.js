@@ -55,6 +55,7 @@ async function checkSession() {
 function updateAuthUI() {
   document.getElementById("auth-logged-out").style.display = isAdmin ? "none" : "block";
   document.getElementById("auth-logged-in").style.display = isAdmin ? "block" : "none";
+  if (typeof refreshAllArmyDraggability === "function") refreshAllArmyDraggability();
 }
 
 document.getElementById("auth-login-btn").addEventListener("click", async () => {
@@ -124,27 +125,36 @@ async function saveOwnership(cfg, featureId, faction) {
 // ---------------------------------------------------------------
 const infoEl = document.getElementById("feature-info");
 
+function clearFeatureInfo() {
+  infoEl.classList.add("empty");
+  infoEl.innerHTML = "Click a feature on the map for details.";
+}
+
 function showFeatureInfo(props, popupFields) {
   const keys =
     popupFields && popupFields.length ? popupFields : Object.keys(props || {});
 
+  const closeBtn = `<button id="clear-info-btn" class="clear-info-btn">✕ Close</button>`;
+
   if (!keys.length) {
-    infoEl.innerHTML = `<p class="empty">No attributes on this feature.</p>`;
-    return;
+    infoEl.classList.remove("empty");
+    infoEl.innerHTML = closeBtn + `<p class="empty">No attributes on this feature.</p>`;
+  } else {
+    const rows = keys
+      .filter((k) => props[k] !== undefined && !String(k).startsWith("_"))
+      .map(
+        (k) =>
+          `<div class="info-row"><span class="info-key">${escapeHtml(
+            k
+          )}</span><span class="info-val">${escapeHtml(String(props[k]))}</span></div>`
+      )
+      .join("");
+
+    infoEl.classList.remove("empty");
+    infoEl.innerHTML = closeBtn + rows;
   }
 
-  const rows = keys
-    .filter((k) => props[k] !== undefined && !String(k).startsWith("_"))
-    .map(
-      (k) =>
-        `<div class="info-row"><span class="info-key">${escapeHtml(
-          k
-        )}</span><span class="info-val">${escapeHtml(String(props[k]))}</span></div>`
-    )
-    .join("");
-
-  infoEl.classList.remove("empty");
-  infoEl.innerHTML = rows;
+  document.getElementById("clear-info-btn").addEventListener("click", clearFeatureInfo);
 }
 
 function escapeHtml(str) {
@@ -167,14 +177,19 @@ function renderOwnershipEditor(feature, lyr, cfg) {
       }>${escapeHtml(f.name)}</option>`
   ).join("");
 
-  const editorHtml = `
-    <div class="bastion-editor">
-      <label class="bastion-editor-label">Assign owner</label>
-      <select id="bastion-owner-select">${optionsHtml}</select>
-      <button id="bastion-save-btn">Save</button>
-      <span id="bastion-save-status"></span>
-    </div>
-  `;
+const editorHtml = `
+  <div class="bastion-editor">
+    <label class="bastion-editor-label">Army name</label>
+    <input type="text" id="army-name-input" value="${escapeHtml(row.name)}" />
+    <label class="bastion-editor-label">Faction</label>
+    <select id="army-faction-select">${optionsHtml}</select>
+    <label class="bastion-editor-label">Estimated size</label>
+    <input type="text" id="army-size-input" value="${escapeHtml(row.size || "")}" placeholder="e.g. 5,000" />
+    <button id="army-save-btn">Save</button>
+    <button id="army-delete-btn" class="danger-btn">Delete Army</button>
+    <span id="army-save-status"></span>
+  </div>
+`;
 
   infoEl.insertAdjacentHTML("beforeend", editorHtml);
 
@@ -518,3 +533,232 @@ const panelToggle = document.getElementById("panel-toggle");
 panelToggle.addEventListener("click", () => {
   panel.classList.toggle("panel--open");
 });
+
+// ---------------------------------------------------------------
+// ARMY MOVEMENT LAYER
+// ---------------------------------------------------------------
+const ARMY_FLAG_SVG =
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 2v20h2V13h11l-3-4 3-4H6V2H4z"/></svg>'
+  );
+
+const armyMarkers = {}; // army id -> Leaflet marker
+let addArmyMode = false;
+
+function buildArmyIcon(color) {
+  const w = 14, h = 14;
+  const outline = "#1a1a1a";
+  const badgeSize = w * 1.25;
+
+  const html = `
+    <div style="
+      width:${badgeSize}px;
+      height:${badgeSize}px;
+      border-radius:50%;
+      background:${outline};
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+    ">
+      <div style="
+        width:${w}px;
+        height:${h}px;
+        background-color:${color};
+        -webkit-mask-image:url('${ARMY_FLAG_SVG}');
+        mask-image:url('${ARMY_FLAG_SVG}');
+        -webkit-mask-size:contain;
+        mask-size:contain;
+        -webkit-mask-repeat:no-repeat;
+        mask-repeat:no-repeat;
+        -webkit-mask-position:center;
+        mask-position:center;
+      "></div>
+    </div>
+  `;
+
+  return L.divIcon({
+    html: html,
+    className: "",
+    iconSize: [badgeSize, badgeSize],
+    iconAnchor: [badgeSize / 2, badgeSize]
+  });
+}
+
+async function loadArmies() {
+  const { data, error } = await supabaseClient.from("Armies").select("*");
+  if (error) {
+    console.error("Failed to load armies:", JSON.stringify(error));
+    return;
+  }
+  data.forEach((row) => addArmyMarker(row));
+}
+
+function addArmyMarker(row) {
+  const marker = L.marker([row.lat, row.lng], {
+    icon: buildArmyIcon(row.color),
+    draggable: false
+  });
+
+  marker.bindTooltip(row.name, {
+    permanent: true,
+    direction: "right",
+    offset: [8, 0],
+    className: "map-label"
+  });
+
+marker.on("click", () => {
+  showFeatureInfo({ Name: row.name, Faction: row.faction, "Estimated Size": row.size || "Unknown" }, []);
+  if (isAdmin) {
+    renderArmyEditor(row, marker);
+  }
+});
+
+  marker.addTo(map);
+  armyMarkers[row.id] = marker;
+  setArmyDraggable(marker, row);
+}
+
+function setArmyDraggable(marker, row) {
+  if (isAdmin) {
+    marker.dragging.enable();
+    marker.off("dragend");
+    marker.on("dragend", async () => {
+      const latlng = marker.getLatLng();
+      const { error } = await supabaseClient
+        .from("Armies")
+        .update({ lat: latlng.lat, lng: latlng.lng })
+        .eq("id", row.id);
+      if (error) console.error("Failed to update army position:", JSON.stringify(error));
+      row.lat = latlng.lat;
+      row.lng = latlng.lng;
+    });
+  } else {
+    marker.dragging.disable();
+  }
+}
+
+function refreshAllArmyDraggability() {
+  Object.keys(armyMarkers).forEach((id) => {
+    setArmyDraggable(armyMarkers[id], { id });
+  });
+}
+
+function renderArmyEditor(row, marker) {
+  const optionsHtml = FACTIONS.map(
+    (f) =>
+      `<option value="${escapeHtml(f.name)}" ${
+        f.name === row.faction ? "selected" : ""
+      }>${escapeHtml(f.name)}</option>`
+  ).join("");
+
+const editorHtml = `
+  <div class="bastion-editor">
+    <label class="bastion-editor-label">Army name</label>
+    <input type="text" id="army-name-input" value="${escapeHtml(row.name)}" />
+    <label class="bastion-editor-label">Faction</label>
+    <select id="army-faction-select">${optionsHtml}</select>
+    <label class="bastion-editor-label">Estimated size</label>
+    <input type="text" id="army-size-input" value="${escapeHtml(row.size || "")}" placeholder="e.g. 5,000" />
+    <button id="army-save-btn">Save</button>
+    <button id="army-delete-btn" class="danger-btn">Delete Army</button>
+    <span id="army-save-status"></span>
+  </div>
+`;
+
+  infoEl.insertAdjacentHTML("beforeend", editorHtml);
+
+document.getElementById("army-save-btn").addEventListener("click", async () => {
+  const name = document.getElementById("army-name-input").value.trim();
+  const factionName = document.getElementById("army-faction-select").value;
+  const faction = FACTIONS.find((f) => f.name === factionName);
+  const size = document.getElementById("army-size-input").value.trim();
+  const statusEl = document.getElementById("army-save-status");
+
+  if (!name) {
+    statusEl.textContent = "Name required.";
+    return;
+  }
+
+  statusEl.textContent = "Saving...";
+  const { error } = await supabaseClient
+    .from("Armies")
+    .update({ name, faction: faction.name, color: faction.color, size })
+    .eq("id", row.id);
+
+  if (error) {
+    statusEl.textContent = "Failed to save.";
+    console.error(error);
+    return;
+  }
+
+  row.name = name;
+  row.faction = faction.name;
+  row.color = faction.color;
+  row.size = size;
+  marker.setIcon(buildArmyIcon(faction.color));
+  marker.setTooltipContent(name);
+  statusEl.textContent = "Saved.";
+});
+
+  document.getElementById("army-delete-btn").addEventListener("click", async () => {
+    if (!confirm(`Delete "${row.name}"? This cannot be undone.`)) return;
+
+    const { error } = await supabaseClient.from("Armies").delete().eq("id", row.id);
+    if (error) {
+      console.error("Failed to delete army:", JSON.stringify(error));
+      return;
+    }
+    map.removeLayer(marker);
+    delete armyMarkers[row.id];
+    infoEl.innerHTML = `<p class="empty">Army deleted.</p>`;
+  });
+}
+
+async function createArmyAt(latlng) {
+  const name = prompt("Army name:");
+  if (!name) return;
+
+  const size = prompt("Estimated size (optional):") || "";
+
+  const faction = FACTIONS[0];
+
+  const { data, error } = await supabaseClient
+    .from("Armies")
+    .insert({ name, faction: faction.name, color: faction.color, size, lat: latlng.lat, lng: latlng.lng })
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Failed to create army:", JSON.stringify(error));
+    alert("Failed to create army — check console for details.");
+    return;
+  }
+
+  addArmyMarker(data);
+}
+
+const addArmyBtn = document.getElementById("add-army-btn");
+if (addArmyBtn) {
+  addArmyBtn.addEventListener("click", () => {
+    addArmyMode = !addArmyMode;
+    addArmyBtn.textContent = addArmyMode ? "Click map to place..." : "+ Add Army";
+    addArmyBtn.classList.toggle("active", addArmyMode);
+  });
+}
+
+map.on("click", (e) => {
+  if (addArmyMode && isAdmin) {
+    createArmyAt(e.latlng);
+    addArmyMode = false;
+    if (addArmyBtn) {
+      addArmyBtn.textContent = "+ Add Army";
+      addArmyBtn.classList.remove("active");
+    }
+  } else {
+    clearFeatureInfo();
+  }
+});
+
+loadArmies();

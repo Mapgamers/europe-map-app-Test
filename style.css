@@ -23,6 +23,39 @@ html, body {
   overflow: hidden;
 }
 
+#add-army-btn {
+  margin-top: 8px;
+  width: 100%;
+}
+
+#add-army-btn.active {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.danger-btn {
+  background: #a94442 !important;
+  color: white !important;
+}
+
+.clear-info-btn {
+  display: block;
+  margin-bottom: 10px;
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.clear-info-btn:hover {
+  color: var(--paper);
+}
+
+
 /* ---------------- Sidebar ---------------- */
 
 #panel {
