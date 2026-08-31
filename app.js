@@ -169,7 +169,6 @@ function escapeHtml(str) {
 function renderOwnershipEditor(feature, lyr, cfg) {
   const featureId = feature.properties.id;
   const currentOwnerName = feature.properties._owner || "None";
-
   const optionsHtml = FACTIONS.map(
     (f) =>
       `<option value="${escapeHtml(f.name)}" ${
@@ -177,19 +176,14 @@ function renderOwnershipEditor(feature, lyr, cfg) {
       }>${escapeHtml(f.name)}</option>`
   ).join("");
 
-const editorHtml = `
-  <div class="bastion-editor">
-    <label class="bastion-editor-label">Army name</label>
-    <input type="text" id="army-name-input" value="${escapeHtml(row.name)}" />
-    <label class="bastion-editor-label">Faction</label>
-    <select id="army-faction-select">${optionsHtml}</select>
-    <label class="bastion-editor-label">Estimated size</label>
-    <input type="text" id="army-size-input" value="${escapeHtml(row.size || "")}" placeholder="e.g. 5,000" />
-    <button id="army-save-btn">Save</button>
-    <button id="army-delete-btn" class="danger-btn">Delete Army</button>
-    <span id="army-save-status"></span>
-  </div>
-`;
+  const editorHtml = `
+    <div class="bastion-editor">
+      <label class="bastion-editor-label">Assign owner</label>
+      <select id="bastion-owner-select">${optionsHtml}</select>
+      <button id="bastion-save-btn">Save</button>
+      <span id="bastion-save-status"></span>
+    </div>
+  `;
 
   infoEl.insertAdjacentHTML("beforeend", editorHtml);
 
@@ -211,13 +205,6 @@ const editorHtml = `
       statusEl.textContent = "Failed to save.";
     }
   });
-}
-
-// Keeps track of which layer config each bastion feature came from,
-// so we can rebuild its icon later with the right width/height.
-const bastionIconCfgById = {};
-function currentIconCfg(feature) {
-  return bastionIconCfgById[feature.properties.id];
 }
 
 // ---------------------------------------------------------------
