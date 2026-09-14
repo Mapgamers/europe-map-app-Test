@@ -195,16 +195,20 @@ html, body {
   border-radius: 4px;
 }
 
+.leaflet-tile-pane {
+  filter: grayscale(40%) opacity(0.9) brightness(1.0);
+}
+
 .map-label {
   background: none;
   border: none;
   box-shadow: none;
   padding: 0;
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 9px;
-  font-weight: 500;
+  font-family: "IBM Plex Sans Condensed", sans-serif;
+  font-weight: 700;
+  font-size: 10px;
   color: #1b2430;
-  text-shadow: 0 0 2px #f7f5f0, 0 0 2px #f7f5f0, 0 0 2px #f7f5f0;
+  text-shadow: 0 0 1px #f7f5f0, 0 0 1px #f7f5f0;
   white-space: nowrap;
   pointer-events: none;
 }

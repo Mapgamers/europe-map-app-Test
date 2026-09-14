@@ -351,11 +351,13 @@ function debounce(fn, delay) {
 const viewportLayers = [];
 
 function refreshViewport(entry) {
-  if (!entry.viewportItems) return;
+  if (!entry.viewportItems) return; // clustered layers manage themselves
+
+  const zoomOk = !entry.cfg.minFeatureZoom || map.getZoom() >= entry.cfg.minFeatureZoom;
   const viewBounds = map.getBounds().pad(0.25);
 
   entry.viewportItems.forEach((item) => {
-    const shouldShow = viewBounds.intersects(item.bounds);
+    const shouldShow = zoomOk && viewBounds.intersects(item.bounds);
     if (shouldShow && !item.onMap) {
       entry.container.addLayer(item.layer);
       item.onMap = true;
@@ -437,7 +439,7 @@ function buildLeafletLayer(cfg, geojson) {
     viewportItems.push({ layer: single, bounds, onMap: false });
   });
 
-  return { container, viewportItems };
+   return { container, viewportItems, cfg };
 }
 
 async function loadLayer(cfg) {
