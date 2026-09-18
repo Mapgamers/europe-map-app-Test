@@ -297,6 +297,11 @@
 { "type": "Feature", "properties": { "id": 388, "Name": "Hilsea" }, "geometry": { "type": "Point", "coordinates": [ -1.130194484974897, 50.806363664751295 ] } },
 { "type": "Feature", "properties": { "id": 389, "Name": "Pendennis Castle" }, "geometry": { "type": "Point", "coordinates": [ -5.078549744838183, 50.108104662363381 ] } },
 { "type": "Feature", "properties": { "id": 390, "Name": "Star Castle" }, "geometry": { "type": "Point", "coordinates": [ -6.315662019150119, 49.914907207682191 ] } },
-{ "type": "Feature", "properties": { "id": 391, "Name": null }, "geometry": { "type": "Point", "coordinates": [ 1.346555102087232, 51.111119970623442 ] } }
+{ "type": "Feature", "properties": { "id": 391, "Name": null }, "geometry": { "type": "Point", "coordinates": [ 1.346555102087232, 51.111119970623442 ] } },
+{ "type": "Feature", "properties": { "id": 401, "Name": null }, "geometry": { "type": "Point", "coordinates": [ -4.983, 34.053 ] } },
+{ "type": "Feature", "properties": { "id": 248, "Name": null }, "geometry": { "type": "Point", "coordinates": [ -2.95, 35.317 ] } },
+{ "type": "Feature", "properties": { "id": 400, "Name": null }, "geometry": { "type": "Point", "coordinates": [ -5.308, 35.89 ] } },
+{ "type": "Feature", "properties": { "id": 402, "Name": null }, "geometry": { "type": "Point", "coordinates": [ -0.63, 35.75 ] } },
+{ "type": "Feature", "properties": { "id": 403, "Name": "Tangier" }, "geometry": { "type": "Point", "coordinates": [ -5.808775587793775, 35.766063620467293 ] } }
 ]
 }
