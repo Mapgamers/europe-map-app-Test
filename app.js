@@ -32,11 +32,19 @@ L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Hillshad
   opacity: 1
 }).addTo(map);
 
-L.tileLayer("tiles/{z}/{x}/{y}.png", {
+const forestLayer = L.tileLayer("tiles/{z}/{x}/{y}.png", {
   minZoom: 2,
   maxZoom: 9,
   opacity: 0.6
 }).addTo(map);
+
+document.getElementById("forest-toggle").addEventListener("change", (e) => {
+  if (e.target.checked) {
+    forestLayer.addTo(map);
+  } else {
+    map.removeLayer(forestLayer);
+  }
+});
 
 // ---------------------------------------------------------------
 // SUPABASE CONNECTION (fortress ownership data)
