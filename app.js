@@ -309,14 +309,20 @@ function updateAllLabels() {
 
 function resolveLabelCollisions() {
   const acceptedRects = [];
-  const sortedMarkers = [...labeledMarkers].sort((a, b) => b.priority - a.priority);
+
+  // Only bother with markers that actually have a rendered tooltip
+  // right now — skips the vast majority when most of the dataset
+  // is off-screen or below minFeatureZoom.
+  const visibleMarkers = labeledMarkers.filter(({ lyr }) => {
+    const tooltip = lyr.getTooltip && lyr.getTooltip();
+    return tooltip && tooltip.isOpen() && tooltip.getElement();
+  });
+
+  const sortedMarkers = visibleMarkers.sort((a, b) => b.priority - a.priority);
 
   sortedMarkers.forEach(({ lyr }) => {
-    const tooltip = lyr.getTooltip && lyr.getTooltip();
-    if (!tooltip || !tooltip.isOpen()) return;
-
+    const tooltip = lyr.getTooltip();
     const el = tooltip.getElement();
-    if (!el) return;
 
     el.style.visibility = "visible";
 
@@ -369,9 +375,13 @@ function refreshViewport(entry) {
 }
 
 const refreshAllViewports = debounce(() => {
-  viewportLayers.forEach(refreshViewport);
+  viewportLayers.forEach((entry) => {
+    if (map.hasLayer(entry.container)) {
+      refreshViewport(entry);
+    }
+  });
   updateAllLabels();
-}, 120);
+}, 150);
 
 map.on("moveend zoomend", refreshAllViewports);
 
@@ -384,15 +394,16 @@ const activeLayers = {};
 function makeLayerOptions(cfg) {
   return {
     renderer: L.canvas(),
+    interactive: cfg.interactive !== false,
     pointToLayer: cfg.type === "point" ? pointToLayer(cfg.color, cfg.icon) : undefined,
     style: cfg.type !== "point" ? styleFor(cfg.color, cfg.type, cfg.dashed) : undefined,
     onEachFeature: (feature, lyr) => {
-	lyr.on("click", () => {
-  	showFeatureInfo(feature.properties, cfg.popupFields);
-  	if (cfg.ownershipTable && isAdmin) {
-    	renderOwnershipEditor(feature, lyr, cfg);
-  	}
-	});
+      lyr.on("click", () => {
+        showFeatureInfo(feature.properties, cfg.popupFields);
+        if (cfg.ownershipTable && isAdmin) {
+          renderOwnershipEditor(feature, lyr, cfg);
+        }
+      });
 
       if (cfg.labelField && feature.properties && feature.properties[cfg.labelField]) {
         lyr.bindTooltip(String(feature.properties[cfg.labelField]), {

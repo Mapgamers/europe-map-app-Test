@@ -302,6 +302,21 @@
 { "type": "Feature", "properties": { "id": 248, "Name": null }, "geometry": { "type": "Point", "coordinates": [ -2.95, 35.317 ] } },
 { "type": "Feature", "properties": { "id": 400, "Name": null }, "geometry": { "type": "Point", "coordinates": [ -5.308, 35.89 ] } },
 { "type": "Feature", "properties": { "id": 402, "Name": null }, "geometry": { "type": "Point", "coordinates": [ -0.63, 35.75 ] } },
-{ "type": "Feature", "properties": { "id": 403, "Name": "Tangier" }, "geometry": { "type": "Point", "coordinates": [ -5.808775587793775, 35.766063620467293 ] } }
+{ "type": "Feature", "properties": { "id": 403, "Name": "Tangier" }, "geometry": { "type": "Point", "coordinates": [ -5.808775587793775, 35.766063620467293 ] } },
+{ "type": "Feature", "properties": { "id": 446, "Name": "Pizzighettone" }, "geometry": { "type": "Point", "coordinates": [ 9.778916575730914, 45.185613064103592 ] } },
+{ "type": "Feature", "properties": { "id": 447, "Name": "Forte di Fuentes" }, "geometry": { "type": "Point", "coordinates": [ 9.446193904665947, 46.141170023868149 ] } },
+{ "type": "Feature", "properties": { "id": 448, "Name": "Guastalla" }, "geometry": { "type": "Point", "coordinates": [ 10.656335757927076, 44.916561473365135 ] } },
+{ "type": "Feature", "properties": { "id": 449, "Name": "Mirandola" }, "geometry": { "type": "Point", "coordinates": [ 11.06496912657914, 44.887539217068849 ] } },
+{ "type": "Feature", "properties": { "id": 450, "Name": null }, "geometry": { "type": "Point", "coordinates": [ 10.917, 44.667 ] } },
+{ "type": "Feature", "properties": { "id": 451, "Name": "Forte Sant'Andrea" }, "geometry": { "type": "Point", "coordinates": [ 12.381373455293986, 45.44207387198994 ] } },
+{ "type": "Feature", "properties": { "id": 452, "Name": "Campalto" }, "geometry": { "type": "Point", "coordinates": [ 12.318531147199575, 45.461864701123972 ] } },
+{ "type": "Feature", "properties": { "id": 453, "Name": "Trent" }, "geometry": { "type": "Point", "coordinates": [ 11.129245786839601, 46.059366277083377 ] } },
+{ "type": "Feature", "properties": { "id": 454, "Name": null }, "geometry": { "type": "Point", "coordinates": [ 8.417, 45.317 ] } },
+{ "type": "Feature", "properties": { "id": 455, "Name": "Tortona" }, "geometry": { "type": "Point", "coordinates": [ 8.853022588084059, 44.895149921910694 ] } },
+{ "type": "Feature", "properties": { "id": 456, "Name": "Mortana" }, "geometry": { "type": "Point", "coordinates": [ 8.736467679310909, 45.252959973582719 ] } },
+{ "type": "Feature", "properties": { "id": 457, "Name": "Valenza" }, "geometry": { "type": "Point", "coordinates": [ 8.647257062163481, 45.017176100359379 ] } },
+{ "type": "Feature", "properties": { "id": 458, "Name": null }, "geometry": { "type": "Point", "coordinates": [ 7.883, 45.183 ] } },
+{ "type": "Feature", "properties": { "id": 459, "Name": null }, "geometry": { "type": "Point", "coordinates": [ 8.2, 44.9 ] } },
+{ "type": "Feature", "properties": { "id": 460, "Name": null }, "geometry": { "type": "Point", "coordinates": [ 8.45, 45.133 ] } }
 ]
 }
