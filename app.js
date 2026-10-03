@@ -5,8 +5,18 @@ const map = L.map("map", {
   zoomControl: false,
   minZoom: 3,
   maxZoom: 18,
-  renderer: L.canvas()
+  renderer: L.canvas(),
+  zoomAnimation: false
 }).setView(MAP_CENTER, MAP_ZOOM);
+
+map.createPane("polygonPane");
+map.getPane("polygonPane").style.zIndex = 410;
+
+map.createPane("linePane");
+map.getPane("linePane").style.zIndex = 420;
+
+map.createPane("pointPane");
+map.getPane("pointPane").style.zIndex = 430;
 
 L.control.zoom({ position: "bottomright" }).addTo(map);
 
@@ -400,8 +410,10 @@ const layerListEl = document.getElementById("layer-list");
 const activeLayers = {};
 
 function makeLayerOptions(cfg) {
+  const paneByType = { polygon: "polygonPane", line: "linePane", point: "pointPane" };
   return {
     renderer: L.canvas(),
+    pane: paneByType[cfg.type] || "overlayPane",
     interactive: cfg.interactive !== false,
     pointToLayer: cfg.type === "point" ? pointToLayer(cfg.color, cfg.icon) : undefined,
     style: cfg.type !== "point" ? styleFor(cfg.color, cfg.type, cfg.dashed) : undefined,
