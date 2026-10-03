@@ -474,9 +474,9 @@ const LAYERS = [
   popupFields: [],
 },
 {
-  id: "Cologne",
+  id: "ElectoralCologne",
   label: "Electorate of Cologne",
-  file: "data/Cologne.geojson",
+  file: "data/ElectoralCologne.geojson",
   type: "polygon",
   color: "#a94064",
   visible: true,
