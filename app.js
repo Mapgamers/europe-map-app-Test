@@ -18,6 +18,10 @@ map.getPane("linePane").style.zIndex = 420;
 map.createPane("pointPane");
 map.getPane("pointPane").style.zIndex = 430;
 
+const polygonRenderer = L.canvas({ pane: "polygonPane" });
+const lineRenderer = L.canvas({ pane: "linePane" });
+const pointRenderer = L.canvas({ pane: "pointPane" });
+
 L.control.zoom({ position: "bottomright" }).addTo(map);
 
 L.control.ruler({
@@ -411,8 +415,9 @@ const activeLayers = {};
 
 function makeLayerOptions(cfg) {
   const paneByType = { polygon: "polygonPane", line: "linePane", point: "pointPane" };
+  const rendererByType = { polygon: polygonRenderer, line: lineRenderer, point: pointRenderer };
   return {
-    renderer: L.canvas(),
+    renderer: rendererByType[cfg.type] || L.canvas(),
     pane: paneByType[cfg.type] || "overlayPane",
     interactive: cfg.interactive !== false,
     pointToLayer: cfg.type === "point" ? pointToLayer(cfg.color, cfg.icon) : undefined,
