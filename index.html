@@ -23,29 +23,38 @@
       <h1>Europe</h1>
     </header>
 
-    <div class="layer-row">
-  		<input type="checkbox" id="forest-toggle" checked />
-  		<span class="swatch" style="background:#5ba3a3"></span>
-  		<span class="layer-label">Forest</span>
-		</div>
-	<div id="layer-list" aria-label="Map layers"></div>
+    <div id="base-toggles">
+      <label class="layer-row">
+        <input type="checkbox" id="osm-toggle" checked />
+        <span class="swatch" style="background:#8fb36b"></span>
+        <span class="layer-label">OpenStreetMap background</span>
+      </label>
+      <label class="layer-row">
+        <input type="checkbox" id="forest-toggle" checked />
+        <span class="swatch" style="background:#5ba3a3"></span>
+        <span class="layer-label">Forest</span>
+      </label>
+    </div>
+
+    <div id="layer-list" aria-label="Map layers"></div>
 
     <div id="panel-footer">
-  <div id="auth-box">
-    <div id="auth-logged-out">
-      <input type="email" id="auth-email" placeholder="Email" />
-      <input type="password" id="auth-password" placeholder="Password" />
-      <button id="auth-login-btn">Log in</button>
-      <span id="auth-status"></span>
+      <div id="auth-box">
+        <div id="auth-logged-out">
+          <input type="email" id="auth-email" placeholder="Email" />
+          <input type="password" id="auth-password" placeholder="Password" />
+          <button id="auth-login-btn">Log in</button>
+          <span id="auth-status"></span>
+        </div>
+        <div id="auth-logged-in" style="display:none;">
+          <span>Logged in as admin</span>
+          <button id="auth-logout-btn">Log out</button>
+          <button id="add-army-btn">+ Add Army</button>
+          <button id="add-fleet-btn">+ Add Fleet</button>
+        </div>
+      </div>
+      <div id="feature-info" class="empty">Click a feature on the map for details.</div>
     </div>
-    <div id="auth-logged-in" style="display:none;">
-      <span>Logged in as admin</span>
-      <button id="auth-logout-btn">Log out</button>
-      <button id="add-army-btn">+ Add Army</button>
-    </div>
-  </div>
-  <div id="feature-info" class="empty">Click a feature on the map for details.</div>
-</div>
   </aside>
 
   <button id="panel-toggle" aria-label="Toggle layer panel">
@@ -53,6 +62,21 @@
   </button>
 
   <main id="map"></main>
+
+  <div id="date-banner-wrap">
+    <div id="date-banner">
+      <span id="date-display">…</span>
+      <button id="date-edit-btn" style="display:none;" title="Edit date">✎</button>
+      <div id="date-editor" style="display:none;">
+        <input type="number" id="date-day" min="1" max="31" placeholder="Day" />
+        <select id="date-month"></select>
+        <input type="number" id="date-year" placeholder="Year" />
+        <button id="date-save-btn">Save</button>
+        <button id="date-cancel-btn">Cancel</button>
+        <span id="date-status"></span>
+      </div>
+    </div>
+  </div>
 
 </div>
 

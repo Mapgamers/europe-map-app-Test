@@ -23,12 +23,14 @@ html, body {
   overflow: hidden;
 }
 
-#add-army-btn {
+#add-army-btn,
+#add-fleet-btn {
   margin-top: 8px;
   width: 100%;
 }
 
-#add-army-btn.active {
+#add-army-btn.active,
+#add-fleet-btn.active {
   background: var(--paper);
   color: var(--ink);
 }
@@ -352,4 +354,168 @@ html, body {
   }
 
   #panel-header { padding-left: 64px; }
+}
+
+/* ---------------- Editor inputs ---------------- */
+
+.bastion-editor input[type="text"] {
+  background: var(--ink-soft);
+  color: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+}
+
+.editor-status {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* ---------------- Background toggles ---------------- */
+
+#base-toggles {
+  padding: 14px 24px 0;
+}
+
+/* ---------------- Layer groups (Borders) ---------------- */
+
+.layer-group {
+  border-bottom: 1px solid var(--line);
+}
+
+.layer-group-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 4px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.layer-group-header .layer-label {
+  cursor: pointer;
+}
+
+.group-master {
+  accent-color: var(--amber);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+.group-caret {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+  transition: transform 0.15s;
+}
+
+.layer-group.collapsed .group-caret {
+  transform: rotate(-90deg);
+}
+
+.layer-group.collapsed .layer-group-body {
+  display: none;
+}
+
+.group-count {
+  color: var(--text-dim);
+  font-weight: 400;
+  font-size: 11px;
+}
+
+.layer-row--child {
+  padding-left: 22px;
+}
+
+/* ---------------- Date banner ---------------- */
+
+#date-banner-wrap {
+  position: fixed;
+  top: 12px;
+  left: 300px;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 1100;
+}
+
+#date-banner {
+  pointer-events: auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  background: var(--ink);
+  color: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 18px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  font-family: "Spectral", serif;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+#date-editor {
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+#date-editor input,
+#date-editor select {
+  background: var(--ink-soft);
+  color: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 5px 6px;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+#date-day { width: 56px; }
+#date-year { width: 72px; }
+
+#date-banner button {
+  background: var(--amber);
+  color: var(--ink);
+  border: none;
+  border-radius: 4px;
+  padding: 5px 9px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+#date-banner #date-edit-btn {
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 15px;
+  padding: 2px 6px;
+}
+
+#date-status {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+@media (max-width: 760px) {
+  #date-banner-wrap {
+    left: 0;
+    padding: 0 12px 0 64px;
+  }
 }

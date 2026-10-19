@@ -34,11 +34,20 @@ L.control.ruler({
   }
 }).addTo(map);
 
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+const osmLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
   subdomains: "abc",
   maxZoom: 19
 }).addTo(map);
+
+document.getElementById("osm-toggle").addEventListener("change", (e) => {
+  if (e.target.checked) {
+    osmLayer.addTo(map);
+    osmLayer.bringToBack(); // keeps it underneath the hillshade and forest tiles
+  } else {
+    map.removeLayer(osmLayer);
+  }
+});
 
 L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Hillshade/MapServer/tile/{z}/{y}/{x}", {
   attribution: "Hillshade: USGS, Esri",
@@ -77,7 +86,8 @@ async function checkSession() {
 function updateAuthUI() {
   document.getElementById("auth-logged-out").style.display = isAdmin ? "none" : "block";
   document.getElementById("auth-logged-in").style.display = isAdmin ? "block" : "none";
-  if (typeof refreshAllArmyDraggability === "function") refreshAllArmyDraggability();
+  if (typeof refreshAllUnitDraggability === "function") refreshAllUnitDraggability();
+  if (typeof renderDate === "function") renderDate();
 }
 
 document.getElementById("auth-login-btn").addEventListener("click", async () => {
@@ -153,6 +163,8 @@ function clearFeatureInfo() {
 }
 
 function showFeatureInfo(props, popupFields) {
+  lastInfoShownAt = Date.now();
+
   const keys =
     popupFields && popupFields.length ? popupFields : Object.keys(props || {});
 
@@ -475,9 +487,50 @@ function buildLeafletLayer(cfg, geojson) {
     viewportItems.push({ layer: single, bounds, onMap: false });
   });
 
-   return { container, viewportItems, cfg };
+  return { container, viewportItems, cfg };
 }
 
+// ---------------------------------------------------------------
+// APPROXIMATE POLYGON AREA (km²), used to sort the Borders group
+// ---------------------------------------------------------------
+function ringAreaKm2(ring) {
+  if (!ring || ring.length < 4) return 0;
+  const lat0 = ring.reduce((s, p) => s + p[1], 0) / ring.length;
+  const kx = Math.cos((lat0 * Math.PI) / 180) * 111.32;
+  const ky = 110.57;
+  let sum = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    sum += ring[j][0] * kx * (ring[i][1] * ky) - ring[i][0] * kx * (ring[j][1] * ky);
+  }
+  return Math.abs(sum) / 2;
+}
+
+function polygonAreaKm2(rings) {
+  return rings.reduce(
+    (total, ring, i) => total + (i === 0 ? ringAreaKm2(ring) : -ringAreaKm2(ring)),
+    0
+  );
+}
+
+function geojsonAreaKm2(geojson) {
+  let total = 0;
+  (geojson.features || []).forEach((f) => {
+    const g = f.geometry;
+    if (!g) return;
+    if (g.type === "Polygon") {
+      total += polygonAreaKm2(g.coordinates);
+    } else if (g.type === "MultiPolygon") {
+      g.coordinates.forEach((poly) => {
+        total += polygonAreaKm2(poly);
+      });
+    }
+  });
+  return total;
+}
+
+// ---------------------------------------------------------------
+// LOAD LAYERS + BUILD THE LAYER PANEL
+// ---------------------------------------------------------------
 async function loadLayer(cfg) {
   try {
     const res = await fetch(cfg.file);
@@ -485,20 +538,19 @@ async function loadLayer(cfg) {
     const geojson = await res.json();
 
     if (cfg.ownershipTable) {
-  await loadOwnership(cfg);
-  const table = ownershipCache[cfg.ownershipTable] || {};
-  geojson.features.forEach((feature) => {
-    const ownership = table[feature.properties.id];
-    if (ownership) {
-      feature.properties._ownerColor = ownership.color;
-      feature.properties._owner = ownership.owner;
+      await loadOwnership(cfg);
+      const table = ownershipCache[cfg.ownershipTable] || {};
+      geojson.features.forEach((feature) => {
+        const ownership = table[feature.properties.id];
+        if (ownership) {
+          feature.properties._ownerColor = ownership.color;
+          feature.properties._owner = ownership.owner;
+        }
+      });
     }
-  });
-}
 
     const entry = buildLeafletLayer(cfg, geojson);
     activeLayers[cfg.id] = entry;
-
     if (entry.viewportItems) viewportLayers.push(entry);
 
     if (cfg.visible) {
@@ -506,16 +558,30 @@ async function loadLayer(cfg) {
       refreshViewport(entry);
     }
 
-    buildLayerRow(cfg, true);
+    const area = cfg.type === "polygon" ? geojsonAreaKm2(geojson) : 0;
+    return { cfg, loaded: true, area };
   } catch (err) {
     console.error(`Failed to load layer "${cfg.label}":`, err);
-    buildLayerRow(cfg, false);
+    return { cfg, loaded: false, area: 0 };
   }
 }
 
-function buildLayerRow(cfg, loaded) {
+function setLayerVisible(cfg, visible) {
+  const entry = activeLayers[cfg.id];
+  if (!entry) return;
+  if (visible) {
+    entry.container.addTo(map);
+    refreshViewport(entry);
+    updateAllLabels();
+  } else {
+    map.removeLayer(entry.container);
+  }
+}
+
+function createLayerRow(cfg, loaded, { indent = false } = {}) {
   const row = document.createElement("label");
-  row.className = "layer-row" + (loaded ? "" : " layer-row--error");
+  row.className =
+    "layer-row" + (loaded ? "" : " layer-row--error") + (indent ? " layer-row--child" : "");
 
   const swatch =
     cfg.icon && cfg.icon.url
@@ -530,23 +596,93 @@ function buildLayerRow(cfg, loaded) {
     cfg.label
   )}</span>${status}`;
 
-  layerListEl.appendChild(row);
-
   if (loaded) {
     row.querySelector("input").addEventListener("change", (e) => {
-      const entry = activeLayers[cfg.id];
-      if (e.target.checked) {
-        entry.container.addTo(map);
-        refreshViewport(entry);
-        updateAllLabels();
-      } else {
-        map.removeLayer(entry.container);
-      }
+      setLayerVisible(cfg, e.target.checked);
     });
   }
+  return row;
 }
 
-Promise.all(LAYERS.map(loadLayer)).then(() => {
+function buildGroup(name, items) {
+  const wrap = document.createElement("div");
+  wrap.className = "layer-group collapsed";
+
+  const header = document.createElement("div");
+  header.className = "layer-group-header";
+  header.innerHTML = `
+    <button class="group-caret" aria-label="Expand or collapse ${escapeHtml(name)}">▾</button>
+    <input type="checkbox" class="group-master" />
+    <span class="layer-label">${escapeHtml(name)} <span class="group-count">(${items.length})</span></span>
+  `;
+
+  const body = document.createElement("div");
+  body.className = "layer-group-body";
+  items.forEach((r) => body.appendChild(createLayerRow(r.cfg, r.loaded, { indent: true })));
+
+  wrap.appendChild(header);
+  wrap.appendChild(body);
+
+  const master = header.querySelector(".group-master");
+  const childBoxes = () => [...body.querySelectorAll('input[type="checkbox"]:not(:disabled)')];
+
+  function syncMaster() {
+    const boxes = childBoxes();
+    const on = boxes.filter((b) => b.checked).length;
+    master.checked = boxes.length > 0 && on === boxes.length;
+    master.indeterminate = on > 0 && on < boxes.length;
+  }
+
+  master.addEventListener("change", () => {
+    const target = master.checked;
+    childBoxes().forEach((box) => {
+      if (box.checked !== target) {
+        box.checked = target;
+        box.dispatchEvent(new Event("change"));
+      }
+    });
+    syncMaster();
+  });
+
+  body.addEventListener("change", syncMaster);
+
+  const toggleCollapsed = () => wrap.classList.toggle("collapsed");
+  header.querySelector(".group-caret").addEventListener("click", toggleCollapsed);
+  header.querySelector(".layer-label").addEventListener("click", toggleCollapsed);
+
+  syncMaster();
+  return wrap;
+}
+
+function groupNameFor(cfg) {
+  if (cfg.group !== undefined) return cfg.group || null; // group: false opts a layer out
+  return cfg.type === "polygon" ? "Borders" : null;
+}
+
+function buildLayerPanel(results) {
+  layerListEl.innerHTML = "";
+
+  const groups = {};
+  results.forEach((r) => {
+    const name = groupNameFor(r.cfg);
+    if (name) (groups[name] = groups[name] || []).push(r);
+  });
+
+  const placed = new Set();
+  results.forEach((r) => {
+    const name = groupNameFor(r.cfg);
+    if (!name) {
+      layerListEl.appendChild(createLayerRow(r.cfg, r.loaded));
+    } else if (!placed.has(name)) {
+      placed.add(name);
+      const sorted = [...groups[name]].sort((a, b) => b.area - a.area); // largest first
+      layerListEl.appendChild(buildGroup(name, sorted));
+    }
+  });
+}
+
+Promise.all(LAYERS.map(loadLayer)).then((results) => {
+  buildLayerPanel(results);
   updateAllLabels();
 });
 
@@ -560,230 +696,330 @@ panelToggle.addEventListener("click", () => {
 });
 
 // ---------------------------------------------------------------
-// ARMY MOVEMENT LAYER
+// MOVABLE UNITS (armies + fleets share this code)
 // ---------------------------------------------------------------
-const ARMY_FLAG_SVG =
-  'data:image/svg+xml;utf8,' +
-  encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 2v20h2V13h11l-3-4 3-4H6V2H4z"/></svg>'
-  );
+let lastInfoShownAt = 0;
+const unitLayers = [];
 
-const armyMarkers = {}; // army id -> Leaflet marker
-let addArmyMode = false;
+function createUnitLayer({ table, noun, svgPath, addBtnId, sizePlaceholder }) {
+  const iconUri =
+    "data:image/svg+xml;utf8," +
+    encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="${svgPath}"/></svg>`
+    );
 
-function buildArmyIcon(color) {
-  const w = 14, h = 14;
-  const outline = "#1a1a1a";
-  const badgeSize = w * 1.25;
+  const entries = {};
+  let addMode = false;
+  const addBtn = document.getElementById(addBtnId);
 
-  const html = `
-    <div style="
-      width:${badgeSize}px;
-      height:${badgeSize}px;
-      border-radius:50%;
-      background:${outline};
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.5);
-    ">
-      <div style="
-        width:${w}px;
-        height:${h}px;
-        background-color:${color};
-        -webkit-mask-image:url('${ARMY_FLAG_SVG}');
-        mask-image:url('${ARMY_FLAG_SVG}');
-        -webkit-mask-size:contain;
-        mask-size:contain;
-        -webkit-mask-repeat:no-repeat;
-        mask-repeat:no-repeat;
-        -webkit-mask-position:center;
-        mask-position:center;
-      "></div>
-    </div>
-  `;
-
-  return L.divIcon({
-    html: html,
-    className: "",
-    iconSize: [badgeSize, badgeSize],
-    iconAnchor: [badgeSize / 2, badgeSize]
-  });
-}
-
-async function loadArmies() {
-  const { data, error } = await supabaseClient.from("Armies").select("*");
-  if (error) {
-    console.error("Failed to load armies:", JSON.stringify(error));
-    return;
-  }
-  data.forEach((row) => addArmyMarker(row));
-}
-
-function addArmyMarker(row) {
-  const marker = L.marker([row.lat, row.lng], {
-    icon: buildArmyIcon(row.color),
-    draggable: false
-  });
-
-  marker.bindTooltip(row.name, {
-    permanent: true,
-    direction: "right",
-    offset: [8, 0],
-    className: "map-label"
-  });
-
-marker.on("click", () => {
-  showFeatureInfo({ Name: row.name, Faction: row.faction, "Estimated Size": row.size || "Unknown" }, []);
-  if (isAdmin) {
-    renderArmyEditor(row, marker);
-  }
-});
-
-  marker.addTo(map);
-  armyMarkers[row.id] = marker;
-  setArmyDraggable(marker, row);
-}
-
-function setArmyDraggable(marker, row) {
-  if (isAdmin) {
-    marker.dragging.enable();
-    marker.off("dragend");
-    marker.on("dragend", async () => {
-      const latlng = marker.getLatLng();
-      const { error } = await supabaseClient
-        .from("Armies")
-        .update({ lat: latlng.lat, lng: latlng.lng })
-        .eq("id", row.id);
-      if (error) console.error("Failed to update army position:", JSON.stringify(error));
-      row.lat = latlng.lat;
-      row.lng = latlng.lng;
+  function buildIcon(color) {
+    const w = 14, h = 14;
+    const badge = w * 1.25;
+    const html = `
+      <div style="width:${badge}px;height:${badge}px;border-radius:50%;background:#1a1a1a;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,0.5);">
+        <div style="width:${w}px;height:${h}px;background-color:${color};-webkit-mask-image:url('${iconUri}');mask-image:url('${iconUri}');-webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;"></div>
+      </div>`;
+    return L.divIcon({
+      html,
+      className: "",
+      iconSize: [badge, badge],
+      iconAnchor: [badge / 2, badge]
     });
-  } else {
-    marker.dragging.disable();
-  }
-}
-
-function refreshAllArmyDraggability() {
-  Object.keys(armyMarkers).forEach((id) => {
-    setArmyDraggable(armyMarkers[id], { id });
-  });
-}
-
-function renderArmyEditor(row, marker) {
-  const optionsHtml = FACTIONS.map(
-    (f) =>
-      `<option value="${escapeHtml(f.name)}" ${
-        f.name === row.faction ? "selected" : ""
-      }>${escapeHtml(f.name)}</option>`
-  ).join("");
-
-const editorHtml = `
-  <div class="bastion-editor">
-    <label class="bastion-editor-label">Army name</label>
-    <input type="text" id="army-name-input" value="${escapeHtml(row.name)}" />
-    <label class="bastion-editor-label">Faction</label>
-    <select id="army-faction-select">${optionsHtml}</select>
-    <label class="bastion-editor-label">Estimated size</label>
-    <input type="text" id="army-size-input" value="${escapeHtml(row.size || "")}" placeholder="e.g. 5,000" />
-    <button id="army-save-btn">Save</button>
-    <button id="army-delete-btn" class="danger-btn">Delete Army</button>
-    <span id="army-save-status"></span>
-  </div>
-`;
-
-  infoEl.insertAdjacentHTML("beforeend", editorHtml);
-
-document.getElementById("army-save-btn").addEventListener("click", async () => {
-  const name = document.getElementById("army-name-input").value.trim();
-  const factionName = document.getElementById("army-faction-select").value;
-  const faction = FACTIONS.find((f) => f.name === factionName);
-  const size = document.getElementById("army-size-input").value.trim();
-  const statusEl = document.getElementById("army-save-status");
-
-  if (!name) {
-    statusEl.textContent = "Name required.";
-    return;
   }
 
-  statusEl.textContent = "Saving...";
-  const { error } = await supabaseClient
-    .from("Armies")
-    .update({ name, faction: faction.name, color: faction.color, size })
-    .eq("id", row.id);
-
-  if (error) {
-    statusEl.textContent = "Failed to save.";
-    console.error(error);
-    return;
+  function applyDraggable(entry) {
+    const { row, marker } = entry;
+    marker.off("dragend");
+    if (isAdmin) {
+      marker.dragging.enable();
+      marker.on("dragend", async () => {
+        const ll = marker.getLatLng();
+        const { error } = await supabaseClient
+          .from(table)
+          .update({ lat: ll.lat, lng: ll.lng })
+          .eq("id", row.id);
+        if (error) console.error(`Failed to move ${noun}:`, JSON.stringify(error));
+        row.lat = ll.lat;
+        row.lng = ll.lng;
+      });
+    } else {
+      marker.dragging.disable();
+    }
   }
 
-  row.name = name;
-  row.faction = faction.name;
-  row.color = faction.color;
-  row.size = size;
-  marker.setIcon(buildArmyIcon(faction.color));
-  marker.setTooltipContent(name);
-  statusEl.textContent = "Saved.";
-});
+  function addMarker(row) {
+    const marker = L.marker([row.lat, row.lng], { icon: buildIcon(row.color), draggable: false });
+    marker.bindTooltip(row.name, {
+      permanent: true,
+      direction: "right",
+      offset: [8, 0],
+      className: "map-label"
+    });
+    marker.on("click", () => {
+      showFeatureInfo(
+        { Name: row.name, Faction: row.faction, "Estimated Size": row.size || "Unknown" },
+        []
+      );
+      if (isAdmin) renderEditor(row, marker);
+    });
+    marker.addTo(map);
+    const entry = { row, marker };
+    entries[row.id] = entry;
+    applyDraggable(entry);
+    return entry;
+  }
 
-  document.getElementById("army-delete-btn").addEventListener("click", async () => {
-    if (!confirm(`Delete "${row.name}"? This cannot be undone.`)) return;
+  function renderEditor(row, marker) {
+    const optionsHtml = FACTIONS.map(
+      (f) =>
+        `<option value="${escapeHtml(f.name)}" ${
+          f.name === row.faction ? "selected" : ""
+        }>${escapeHtml(f.name)}</option>`
+    ).join("");
 
-    const { error } = await supabaseClient.from("Armies").delete().eq("id", row.id);
+    infoEl.insertAdjacentHTML(
+      "beforeend",
+      `
+      <div class="bastion-editor">
+        <label class="bastion-editor-label">${noun} name</label>
+        <input type="text" id="unit-name-input" value="${escapeHtml(row.name)}" />
+        <label class="bastion-editor-label">Faction</label>
+        <select id="unit-faction-select">${optionsHtml}</select>
+        <label class="bastion-editor-label">Estimated size</label>
+        <input type="text" id="unit-size-input" value="${escapeHtml(row.size || "")}" placeholder="${sizePlaceholder}" />
+        <button id="unit-save-btn">Save</button>
+        <button id="unit-delete-btn" class="danger-btn">Delete ${noun}</button>
+        <span class="editor-status" id="unit-save-status"></span>
+      </div>`
+    );
+
+    document.getElementById("unit-save-btn").addEventListener("click", async () => {
+      const name = document.getElementById("unit-name-input").value.trim();
+      const faction = FACTIONS.find(
+        (f) => f.name === document.getElementById("unit-faction-select").value
+      );
+      const size = document.getElementById("unit-size-input").value.trim();
+      const statusEl = document.getElementById("unit-save-status");
+
+      if (!name) {
+        statusEl.textContent = "Name required.";
+        return;
+      }
+
+      statusEl.textContent = "Saving...";
+      const { error } = await supabaseClient
+        .from(table)
+        .update({ name, faction: faction.name, color: faction.color, size })
+        .eq("id", row.id);
+
+      if (error) {
+        statusEl.textContent = "Failed to save.";
+        console.error(JSON.stringify(error));
+        return;
+      }
+
+      row.name = name;
+      row.faction = faction.name;
+      row.color = faction.color;
+      row.size = size;
+      marker.setIcon(buildIcon(faction.color));
+      marker.setTooltipContent(name);
+      statusEl.textContent = "Saved.";
+    });
+
+    document.getElementById("unit-delete-btn").addEventListener("click", async () => {
+      if (!confirm(`Delete "${row.name}"? This cannot be undone.`)) return;
+      const { error } = await supabaseClient.from(table).delete().eq("id", row.id);
+      if (error) {
+        console.error(JSON.stringify(error));
+        return;
+      }
+      map.removeLayer(marker);
+      delete entries[row.id];
+      clearFeatureInfo();
+    });
+  }
+
+  async function createAt(latlng) {
+    const name = prompt(`${noun} name:`);
+    if (!name) return;
+    const size = prompt("Estimated size (optional):") || "";
+    const faction = FACTIONS[0];
+
+    const { data, error } = await supabaseClient
+      .from(table)
+      .insert({
+        name,
+        faction: faction.name,
+        color: faction.color,
+        size,
+        lat: latlng.lat,
+        lng: latlng.lng
+      })
+      .select()
+      .single();
+
     if (error) {
-      console.error("Failed to delete army:", JSON.stringify(error));
+      console.error(JSON.stringify(error));
+      alert(`Failed to create ${noun.toLowerCase()} - check the console for details.`);
       return;
     }
-    map.removeLayer(marker);
-    delete armyMarkers[row.id];
-    infoEl.innerHTML = `<p class="empty">Army deleted.</p>`;
+
+    const entry = addMarker(data);
+    showFeatureInfo(
+      { Name: data.name, Faction: data.faction, "Estimated Size": data.size || "Unknown" },
+      []
+    );
+    renderEditor(data, entry.marker); // opens the editor so you can set the faction right away
+  }
+
+  function setAddMode(on) {
+    addMode = on;
+    if (addBtn) {
+      addBtn.textContent = on ? "Click map to place..." : `+ Add ${noun}`;
+      addBtn.classList.toggle("active", on);
+    }
+  }
+
+  if (addBtn) {
+    addBtn.addEventListener("click", () => {
+      const turningOn = !addMode;
+      unitLayers.forEach((u) => u.cancelAdd()); // only one placement mode at a time
+      setAddMode(turningOn);
+    });
+  }
+
+  map.on("click", (e) => {
+    if (addMode && isAdmin) {
+      createAt(e.latlng);
+      setAddMode(false);
+    } else if (Date.now() - lastInfoShownAt > 100) {
+      clearFeatureInfo();
+    }
   });
+
+  async function load() {
+    const { data, error } = await supabaseClient.from(table).select("*");
+    if (error) {
+      console.error(`Failed to load ${table}:`, JSON.stringify(error));
+      return;
+    }
+    data.forEach((row) => addMarker(row));
+  }
+
+  const api = {
+    load,
+    cancelAdd: () => setAddMode(false),
+    refreshDraggability: () => Object.values(entries).forEach(applyDraggable)
+  };
+  unitLayers.push(api);
+  return api;
 }
 
-async function createArmyAt(latlng) {
-  const name = prompt("Army name:");
-  if (!name) return;
+function refreshAllUnitDraggability() {
+  unitLayers.forEach((u) => u.refreshDraggability());
+}
 
-  const size = prompt("Estimated size (optional):") || "";
+const armyUnits = createUnitLayer({
+  table: "Armies",
+  noun: "Army",
+  svgPath: "M4 2v20h2V13h11l-3-4 3-4H6V2H4z",
+  addBtnId: "add-army-btn",
+  sizePlaceholder: "e.g. 5,000"
+});
 
-  const faction = FACTIONS[0];
+const fleetUnits = createUnitLayer({
+  table: "Fleets",
+  noun: "Fleet",
+  svgPath: "M2 16h20l-3.5 5h-13z M11 3h2v13h-2z M10 6L4 14h6z M14 6l6 8h-6z",
+  addBtnId: "add-fleet-btn",
+  sizePlaceholder: "e.g. 12 ships"
+});
 
-  const { data, error } = await supabaseClient
-    .from("Armies")
-    .insert({ name, faction: faction.name, color: faction.color, size, lat: latlng.lat, lng: latlng.lng })
-    .select()
-    .single();
+armyUnits.load();
+fleetUnits.load();
 
-  if (error) {
-    console.error("Failed to create army:", JSON.stringify(error));
-    alert("Failed to create army — check console for details.");
+// ---------------------------------------------------------------
+// DATE BANNER
+// ---------------------------------------------------------------
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
+];
+let gameDate = null;
+
+const dateDisplayEl = document.getElementById("date-display");
+const dateEditBtn = document.getElementById("date-edit-btn");
+const dateEditorEl = document.getElementById("date-editor");
+const dateStatusEl = document.getElementById("date-status");
+const dateMonthSel = document.getElementById("date-month");
+
+MONTHS.forEach((m, i) => dateMonthSel.add(new Option(m, i + 1)));
+
+function setDateEditing(on) {
+  dateEditorEl.style.display = on ? "flex" : "none";
+  dateDisplayEl.style.display = on ? "none" : "inline";
+  dateEditBtn.style.display = !on && isAdmin ? "inline-block" : "none";
+}
+
+function renderDate() {
+  dateDisplayEl.textContent = gameDate
+    ? `${gameDate.day} ${MONTHS[gameDate.month - 1]} ${gameDate.year}`
+    : "Date not set";
+  setDateEditing(isAdmin && dateEditorEl.style.display === "flex");
+}
+
+dateEditBtn.addEventListener("click", () => {
+  const d = gameDate || { day: 1, month: 1, year: 1600 };
+  document.getElementById("date-day").value = d.day;
+  dateMonthSel.value = d.month;
+  document.getElementById("date-year").value = d.year;
+  dateStatusEl.textContent = "";
+  setDateEditing(true);
+});
+
+document.getElementById("date-cancel-btn").addEventListener("click", () => setDateEditing(false));
+
+document.getElementById("date-save-btn").addEventListener("click", async () => {
+  const day = parseInt(document.getElementById("date-day").value, 10);
+  const month = parseInt(dateMonthSel.value, 10);
+  const year = parseInt(document.getElementById("date-year").value, 10);
+  const maxDay = new Date(2000, month, 0).getDate(); // 2000 is a leap year, so Feb allows 29
+
+  if (!Number.isInteger(day) || !Number.isInteger(year) || day < 1 || day > maxDay) {
+    dateStatusEl.textContent = "Check the date.";
     return;
   }
 
-  addArmyMarker(data);
-}
+  dateStatusEl.textContent = "Saving...";
+  const { error } = await supabaseClient
+    .from("GameDate")
+    .upsert({ key: "current", day, month, year }, { onConflict: "key" });
 
-const addArmyBtn = document.getElementById("add-army-btn");
-if (addArmyBtn) {
-  addArmyBtn.addEventListener("click", () => {
-    addArmyMode = !addArmyMode;
-    addArmyBtn.textContent = addArmyMode ? "Click map to place..." : "+ Add Army";
-    addArmyBtn.classList.toggle("active", addArmyMode);
-  });
-}
-
-map.on("click", (e) => {
-  if (addArmyMode && isAdmin) {
-    createArmyAt(e.latlng);
-    addArmyMode = false;
-    if (addArmyBtn) {
-      addArmyBtn.textContent = "+ Add Army";
-      addArmyBtn.classList.remove("active");
-    }
-  } else {
-    clearFeatureInfo();
+  if (error) {
+    dateStatusEl.textContent = "Failed to save.";
+    console.error(JSON.stringify(error));
+    return;
   }
+
+  gameDate = { day, month, year };
+  dateStatusEl.textContent = "";
+  setDateEditing(false);
+  renderDate();
 });
 
-loadArmies();
+async function loadGameDate() {
+  const { data, error } = await supabaseClient
+    .from("GameDate")
+    .select("*")
+    .eq("key", "current")
+    .maybeSingle();
+  if (error) {
+    console.error("Failed to load date:", JSON.stringify(error));
+  } else if (data) {
+    gameDate = { day: data.day, month: data.month, year: data.year };
+  }
+  renderDate();
+}
+
+loadGameDate();
