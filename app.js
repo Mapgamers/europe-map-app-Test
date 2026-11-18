@@ -57,9 +57,12 @@ L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Hillshad
 
 const forestLayer = L.tileLayer("tiles/{z}/{x}/{y}.png", {
   minZoom: 2,
-  maxZoom: 9,
+  maxZoom: 7,
+  maxNativeZoom: 7,                        // never request tiles deeper than zoom 7; Leaflet stretches them instead
+  bounds: [[31.9, -23.5], [73.1, 56.9]],   // only request tiles inside the forest data's area
+  updateWhenIdle: true,                    // wait until you stop panning before loading tiles
   opacity: 0.6
-}).addTo(map);
+});
 
 document.getElementById("forest-toggle").addEventListener("change", (e) => {
   if (e.target.checked) {
